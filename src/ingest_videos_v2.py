@@ -13,8 +13,8 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import OperationalError
-from database import init_db, get_db, Video
-from youtube_service import YouTubeService
+from src.database import init_db, get_db, Video
+from src.youtube_service import YouTubeService
 
 
 def save_to_json(videos: list, filename: str = "videos_backup.json"):

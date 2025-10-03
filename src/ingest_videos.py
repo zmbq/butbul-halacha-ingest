@@ -10,8 +10,8 @@ This script:
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from database import init_db, get_db, Video
-from youtube_service import YouTubeService
+from src.database import init_db, get_db, Video
+from src.youtube_service import YouTubeService
 
 
 def upsert_video(db, video_data: dict) -> bool:

@@ -6,7 +6,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from config import config
+from src.config import config
 
 
 class YouTubeService:

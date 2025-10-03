@@ -2,8 +2,8 @@
 Butbul Halacha Ingest - Main entry point
 """
 
-from config import config
-from ingest_videos_v2 import ingest_videos
+from src.config import config
+from src.ingest_videos_v2 import ingest_videos
 
 
 def main():

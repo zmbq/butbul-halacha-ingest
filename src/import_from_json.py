@@ -6,7 +6,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from database import init_db, get_db, Video
+from src.database import init_db, get_db, Video
 from sqlalchemy.dialects.postgresql import insert
 
 
