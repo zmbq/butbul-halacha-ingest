@@ -155,13 +155,17 @@ def extract_all_metadata():
                 # Try description if title extraction failed
                 hebrew_date, subject = extract_hebrew_date_and_subject(video.description)
             
+            # If hebrew_date is present but too long for DB, treat it as NULL
+            if hebrew_date and len(hebrew_date) > 50:
+                # Do not calculate day_of_week for overly long dates
+                hebrew_date = None
+
             # Calculate day of week from the Hebrew date using proper conversion
             day_of_week = get_day_of_week(hebrew_date) if hebrew_date else None
-            
+
             if not hebrew_date:
                 extraction_errors += 1
-                # Still create a record but with nulls
-            
+
             metadata_batch.append({
                 'video_id': video.video_id,
                 'hebrew_date': hebrew_date,

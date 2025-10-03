@@ -144,7 +144,12 @@ def parse_hebrew_date_string(hebrew_date: str) -> tuple[int | None, int | None, 
         if len(parts) >= 2:
             month_name = parts[0]
             month = HEBREW_MONTHS.get(month_name)
+            # Year token may be split (e.g. 'התשפ"' and 'ג'), try parsing parts[1]
             year = parse_hebrew_year(parts[1])
+            if year is None and len(parts) >= 3:
+                # Try joining the next token (remove intervening space)
+                candidate = parts[1] + parts[2]
+                year = parse_hebrew_year(candidate)
             
             return day, month, year
     
@@ -165,8 +170,12 @@ def parse_hebrew_date_string(hebrew_date: str) -> tuple[int | None, int | None, 
     month_name = parts[1]
     month = HEBREW_MONTHS.get(month_name)
     
-    # Parse year (third part)
+    # Parse year (third part). Handle case where year is split across tokens
     year = parse_hebrew_year(parts[2])
+    if year is None and len(parts) >= 4:
+        # Try joining parts[2] and parts[3] (e.g., 'התשפ"' + 'ג' -> 'התשפ"ג')
+        candidate = parts[2] + parts[3]
+        year = parse_hebrew_year(candidate)
     
     return day, month, year
 

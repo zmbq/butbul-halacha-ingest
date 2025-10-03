@@ -60,6 +60,8 @@ def test_hebrew_to_gregorian_conversion():
         ("ד' תשרי התשפ\"ו", date(2025, 9, 26)),
         # 11 Tishrei 5786 = October 3, 2025 (Friday) - Today!
         ('י"א תשרי התשפ\"ו', date(2025, 10, 3)),
+        # Variant with a space before the last letter of the year: התשפ" ו -> התשפ" ו (with space)
+        ("ג' תשרי התשפ\" ו", date(2025, 9, 25)),
     ]
     
     passed = 0
@@ -98,6 +100,8 @@ def test_day_of_week_calculation():
         ("ג' תשרי התשפ\"ו", "חמישי", date(2025, 9, 25)),      # 3 Tishrei 5786 = Thursday
         ("ד' תשרי התשפ\"ו", "שישי", date(2025, 9, 26)),      # 4 Tishrei 5786 = Friday
         ('י"א תשרי התשפ\"ו', "שישי", date(2025, 10, 3)),    # 11 Tishrei 5786 = Friday (Today!)
+        # Variant with a space in the year token
+        ("ג' תשרי התשפ\" ו", "חמישי", date(2025, 9, 25)),
     ]
     
     passed = 0
