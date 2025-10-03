@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import OperationalError
 from ..database import init_db, get_db, Video
 from ..youtube_service import YouTubeService
+from ..config import config
 
 
 def save_to_json(videos: list, filename: str = "videos_backup.json"):
@@ -25,9 +26,9 @@ def save_to_json(videos: list, filename: str = "videos_backup.json"):
         videos: List of video dictionaries
         filename: Output filename (will be saved in data/ directory)
     """
-    # Save to data directory
-    data_dir = Path(__file__).parent.parent.parent / "data"
-    data_dir.mkdir(exist_ok=True)
+    # Save to configured data directory
+    data_dir = Path(config.data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     output_path = data_dir / filename
     
     # Convert datetime objects to strings for JSON serialization
