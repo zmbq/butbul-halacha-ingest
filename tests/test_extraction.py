@@ -2,7 +2,7 @@
 Test the metadata extraction logic.
 """
 
-from src.pipeline.extract_metadata_02 import extract_hebrew_date_and_subject
+from src.pipeline.s02_extract_metadata import extract_hebrew_date_and_subject
 from src.hebrew_date_utils import get_day_of_week
 
 
