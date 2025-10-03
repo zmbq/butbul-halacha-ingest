@@ -13,9 +13,11 @@ def show_summary(json_file: str = "videos_backup.json"):
     Show summary statistics of collected videos.
 
     Args:
-        json_file: Path to JSON file containing videos
+        json_file: Path to JSON file containing videos (relative to data/ directory)
     """
-    json_path = Path(__file__).parent.parent / json_file
+    # Look in data directory
+    data_dir = Path(__file__).parent.parent / "data"
+    json_path = data_dir / json_file
     
     if not json_path.exists():
         print(f"✗ Error: File not found: {json_path}")

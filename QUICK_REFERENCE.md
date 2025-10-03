@@ -18,11 +18,11 @@ poetry run python -c "from src.config import config; print(config)"
 ### Running the Pipeline
 
 ```bash
-# Run complete pipeline (Step 1)
-poetry run python src/main.py
+# Run complete pipeline (saves to BOTH database AND JSON)
+poetry run python run.py
 
 # Run ingestion only
-poetry run python src/ingest_videos_v2.py
+poetry run python -m src.ingest_videos_v2
 
 # View collected videos summary
 poetry run python src/show_summary.py
@@ -32,10 +32,10 @@ poetry run python src/show_summary.py
 
 ```bash
 # Test YouTube API
-poetry run python src/test_youtube.py
+poetry run pytest tests/test_youtube_service.py -v
 
 # Test database connection
-poetry run python src/test_db.py
+poetry run pytest tests/test_database.py -v
 
 # Run all unit tests
 poetry run pytest
@@ -104,9 +104,9 @@ YOUTUBE_CHANNEL_ID=UCS9moGQA0U4MqWzT98mIlGw
 | File | Location | Purpose |
 |------|----------|---------|
 | Configuration | `.env` | API keys and database URL |
-| Video backup | `videos_backup.json` | JSON fallback when DB unavailable |
+| Video backup | `data/videos_backup.json` | JSON backup of all videos |
 | Database schema | `schema.sql` | SQL to create tables |
-| Main entry | `src/main.py` | Run complete pipeline |
+| Main entry | `run.py` | Run complete pipeline |
 
 ## Troubleshooting
 
@@ -132,7 +132,7 @@ Current collection (as of 2025-10-03):
 - **Total Videos**: 1,123
 - **Playlists**: 5 (תשפ"ב through תשפ"ו)
 - **Date Range**: Feb 2022 - Oct 2025
-- **Storage**: JSON backup (database pending connectivity)
+- **Storage**: Both database AND JSON (`data/videos_backup.json`)
 
 ## Next Steps
 

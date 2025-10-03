@@ -51,30 +51,34 @@ cp .env.example .env
 
 Run the complete ingestion pipeline:
 ```bash
-poetry run python src/main.py
+# Simple method (recommended)
+poetry run python run.py
+
+# Or using module syntax
+poetry run python -m src.main
 ```
 
 #### Individual Steps
 
 **Step 1: Ingest Videos**
 ```bash
-# Fetch videos from YouTube and store in database
-poetry run python src/ingest_videos_v2.py
+# Fetch videos and save to BOTH database and JSON
+poetry run python run.py
 
 # View collection summary
 poetry run python src/show_summary.py
 
-# Import from JSON backup (if database was unavailable)
+# Import from JSON backup (if needed)
 poetry run python src/import_from_json.py videos_backup.json
 ```
 
 **Testing Components**
 ```bash
 # Test YouTube API connectivity
-poetry run python src/test_youtube.py
+poetry run pytest tests/test_youtube_service.py -v
 
 # Test database connectivity  
-poetry run python src/test_db.py
+poetry run pytest tests/test_database.py -v
 
 # Run all tests
 poetry run pytest
@@ -114,20 +118,25 @@ butbul-halacha-ingest/
 │   ├── database.py          # Database models and connection
 │   ├── youtube_service.py   # YouTube API client
 │   ├── main.py              # Main entry point
-│   ├── ingest_videos_v2.py  # Video ingestion with fallback
+│   ├── ingest_videos_v2.py  # Video ingestion pipeline
 │   ├── import_from_json.py  # Import videos from JSON backup
-│   ├── show_summary.py      # Display collection statistics
-│   ├── test_youtube.py      # Test YouTube connectivity
-│   └── test_db.py           # Test database connectivity
+│   └── show_summary.py      # Display collection statistics
 ├── tests/                   # Test files
 │   ├── test_config.py       # Configuration tests
+│   ├── test_database.py     # Database connectivity tests
+│   ├── test_youtube_service.py  # YouTube API tests
 │   └── test_main.py
+├── data/                    # Downloaded data (git-ignored)
+│   ├── README.md            # Data directory documentation
+│   ├── .gitkeep            # Preserve directory in git
+│   └── videos_backup.json   # JSON backup of all videos
 ├── docs/                    # Documentation
 │   ├── CONFIGURATION.md     # Configuration guide
 │   └── STEP1_INGESTION.md   # Step 1 documentation
 ├── .env                     # Environment variables (not in git)
 ├── .env.example             # Example environment configuration
-├── videos_backup.json       # JSON backup of videos (if created)
+├── run.py                   # Convenient run script
+├── schema.sql               # Database schema SQL
 ├── pyproject.toml           # Poetry configuration and dependencies
 └── README.md                # This file
 ```
@@ -138,11 +147,12 @@ butbul-halacha-ingest/
 
 Collects videos from YouTube playlists containing "הלכה יומית":
 - Fetches playlist information
-- Retrieves all videos with metadata
-- Stores in PostgreSQL database (or JSON fallback)
+- Retrieves all videos with metadata  
+- **Saves to BOTH database AND JSON simultaneously**
+- JSON stored in `data/videos_backup.json` as backup
 - Supports re-running without duplicates (upsert)
 
-**Status**: Complete - 1,123 videos collected
+**Status**: Complete - 1,123 videos collected and stored
 
 ### Step 2: Date Extraction (Planned)
 
