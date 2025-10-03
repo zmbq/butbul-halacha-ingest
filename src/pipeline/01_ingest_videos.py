@@ -13,8 +13,8 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import OperationalError
-from src.database import init_db, get_db, Video
-from src.youtube_service import YouTubeService
+from ..database import init_db, get_db, Video
+from ..youtube_service import YouTubeService
 
 
 def save_to_json(videos: list, filename: str = "videos_backup.json"):
@@ -26,7 +26,7 @@ def save_to_json(videos: list, filename: str = "videos_backup.json"):
         filename: Output filename (will be saved in data/ directory)
     """
     # Save to data directory
-    data_dir = Path(__file__).parent.parent / "data"
+    data_dir = Path(__file__).parent.parent.parent / "data"
     data_dir.mkdir(exist_ok=True)
     output_path = data_dir / filename
     

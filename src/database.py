@@ -39,6 +39,31 @@ class Video(Base):
         return f"<Video(video_id='{self.video_id}', url='{self.url}', published_at='{self.published_at}')>"
 
 
+class VideoMetadata(Base):
+    """Model for storing extracted metadata from video titles and descriptions."""
+
+    __tablename__ = "video_metadata"
+
+    # Foreign key to videos table
+    video_id = Column(String(20), primary_key=True, comment="YouTube video ID (FK to videos)")
+    
+    # Extracted Hebrew date from title/description
+    hebrew_date = Column(String(50), nullable=True, comment="Hebrew date extracted from title (e.g., 'ג' תשרי התשפ\"ו')")
+    
+    # Day of week extracted from Hebrew date
+    day_of_week = Column(String(20), nullable=True, comment="Day of week in Hebrew (e.g., 'ג'', 'ד'', 'ה'')")
+    
+    # Extracted subject/topic from title/description
+    subject = Column(String(500), nullable=True, comment="Subject/topic extracted from title")
+    
+    # Metadata timestamps
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, comment="Record creation timestamp")
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow, comment="Record last update timestamp")
+
+    def __repr__(self):
+        return f"<VideoMetadata(video_id='{self.video_id}', hebrew_date='{self.hebrew_date}', subject='{self.subject[:50]}...')>"
+
+
 # Database engine and session factory
 engine = create_engine(config.database_url, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
