@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "butbul-halacha-ingest"
+version = "0.1.0"
+description = "Ingest the data for the butbul halacha yomit project"
+authors = ["Itay Zandbank"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+psycopg2-binary = "^2.9.10"
+sqlalchemy = "^2.0.36"
+google-api-python-client = "^2.158.0"
+python-dotenv = "^1.0.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+black = "^24.10.0"
+ruff = "^0.8.5"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
