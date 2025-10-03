@@ -2,11 +2,17 @@
 YouTube API service for fetching playlists and videos.
 """
 
+import logging
 from typing import List, Dict, Optional
 from datetime import datetime
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from src.config import config
+
+# Disable verbose logging from googleapiclient
+logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
+logging.getLogger('googleapiclient.discovery').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 
 class YouTubeService:

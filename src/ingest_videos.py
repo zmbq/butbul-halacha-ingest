@@ -65,15 +65,14 @@ def upsert_videos_batch(db, videos_batch: list) -> tuple[int, int]:
         insert_data = []
         
         for video_data in videos_batch:
-            insert_data.append({
-                'video_id': video_data['video_id'],
-                'url': video_data['url'],
-                'description': video_data['description'],
-                'published_at': video_data['published_at'],
-                'updated_at': current_time
-            })
-
-        # Use PostgreSQL's ON CONFLICT to handle upsert for the entire batch
+                insert_data.append({
+                    'video_id': video_data['video_id'],
+                    'url': video_data['url'],
+                    'title': video_data.get('title', ''),
+                    'description': video_data['description'],
+                    'published_at': video_data['published_at'],
+                    'updated_at': current_time
+                })        # Use PostgreSQL's ON CONFLICT to handle upsert for the entire batch
         stmt = insert(Video).values(insert_data)
         
         # Update all fields except video_id (primary key) and created_at on conflict
@@ -81,6 +80,7 @@ def upsert_videos_batch(db, videos_batch: list) -> tuple[int, int]:
             index_elements=['video_id'],
             set_={
                 'url': stmt.excluded.url,
+                'title': stmt.excluded.title,
                 'description': stmt.excluded.description,
                 'published_at': stmt.excluded.published_at,
                 'updated_at': stmt.excluded.updated_at

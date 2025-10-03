@@ -22,6 +22,9 @@ class Video(Base):
     # Video URL
     url = Column(String(255), nullable=False, comment="Full YouTube video URL")
     
+    # Video title
+    title = Column(String(255), nullable=False, comment="Video title from YouTube")
+    
     # Video description
     description = Column(Text, nullable=True, comment="Video description from YouTube")
     
@@ -42,9 +45,33 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db():
-    """Initialize the database by creating all tables."""
+    """
+    Initialize the database by creating all tables.
+    
+    NOTE: This is for initial setup only. For schema changes after initial
+    deployment, use Alembic migrations instead. See MIGRATIONS.md for details.
+    
+    To create migrations after modifying this file:
+        poetry run alembic revision --autogenerate -m "Description"
+        poetry run alembic upgrade head
+    """
     Base.metadata.create_all(bind=engine)
     print("Database tables created successfully.")
+
+
+def drop_all_tables():
+    """Drop all tables. WARNING: This will delete all data!"""
+    Base.metadata.drop_all(bind=engine)
+    print("All tables dropped successfully.")
+
+
+def recreate_db():
+    """Drop and recreate all tables. WARNING: This will delete all data!"""
+    print("Dropping all tables...")
+    drop_all_tables()
+    print("Creating all tables...")
+    init_db()
+    print("Database recreated successfully.")
 
 
 def get_db():
@@ -57,5 +84,9 @@ def get_db():
 
 
 if __name__ == "__main__":
-    # Create tables when run directly
-    init_db()
+    # Recreate tables when run directly (drops and recreates)
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--recreate":
+        recreate_db()
+    else:
+        init_db()

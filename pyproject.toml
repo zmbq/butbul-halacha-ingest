@@ -12,6 +12,7 @@ psycopg2-binary = "^2.9.10"
 sqlalchemy = "^2.0.36"
 google-api-python-client = "^2.158.0"
 python-dotenv = "^1.0.1"
+alembic = "^1.16.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
