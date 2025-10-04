@@ -1,12 +1,12 @@
 """
-Transcript fetching script - Step 3 of the pipeline.
+Whisper transcription script - Step 3 of the pipeline.
 
 This script:
-1. Fetches all videos from the database that don't have transcripts yet
-2. Attempts to fetch YouTube transcripts for each video
-3. Saves transcripts to BOTH database AND disk (data/transcripts/<video_id>.json)
-4. Tracks which videos have transcripts and which don't
-5. Includes configurable delay between requests to avoid rate limiting
+1. Fetches all videos from the database that don't have Whisper transcripts yet
+2. Downloads audio using yt-dlp
+3. Transcribes using OpenAI's Whisper API
+4. Saves transcripts to BOTH database AND disk (data/transcripts/<video_id>.json)
+5. Supports --test mode to process just one video (the oldest)
 """
 
 import json
@@ -40,7 +40,7 @@ def save_transcript_to_disk(video_id: str, transcript_data: dict, transcripts_di
         'language': transcript_data['language'],
         'full_text': transcript_data['full_text'],
         'segments': transcript_data['segments'],
-        'fetched_at': datetime.utcnow().isoformat()
+        'transcribed_at': datetime.utcnow().isoformat()
     }
     
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -93,25 +93,25 @@ def upsert_transcript(db, transcript_data: dict) -> bool:
         return True
         
     except Exception as e:
-        print(f"Error upserting transcript for {transcript_data['video_id']}: {e}")
+        print(f"  ✗ Error upserting transcript: {e}")
         db.rollback()
         return False
 
 
-def fetch_transcripts(skip_existing: bool = True, max_videos: int | None = None, delay_seconds: float = 1.0):
+def transcribe_videos(max_videos: int = 10, delay_seconds: float = 1.0):
     """
-    Main transcript fetching function.
+    Main transcription function.
     
     Args:
-        skip_existing: If True, skip videos that already have transcripts
-        max_videos: Maximum number of videos to process (None = all)
-        delay_seconds: Delay in seconds between requests to avoid rate limiting (default: 1.0)
+        max_videos: Maximum number of videos to process (default: 10)
+        delay_seconds: Delay in seconds between videos to avoid rate limiting
     """
     print("=" * 80)
-    print("Butbul Halacha Transcript Fetching - Step 3")
+    print("Butbul Halacha Whisper Transcription - Step 3")
     print("=" * 80)
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Delay between requests: {delay_seconds} seconds\n")
+    print(f"Processing up to {max_videos} video{'s' if max_videos != 1 else ''}")
+    print(f"Delay between videos: {delay_seconds} seconds\n")
     
     # Initialize database
     try:
@@ -128,36 +128,29 @@ def fetch_transcripts(skip_existing: bool = True, max_videos: int | None = None,
     transcripts_dir.mkdir(parents=True, exist_ok=True)
     print(f"Transcripts will be saved to: {transcripts_dir}\n")
     
-    # Get videos to process
+    # Get videos to process (those without any transcript)
     print("Fetching videos from database...")
     
-    if skip_existing:
-        # Get videos without transcripts
-        query = (
-            select(Video)
-            .outerjoin(Transcript, Video.video_id == Transcript.video_id)
-            .where(Transcript.video_id.is_(None))
-        )
-        print("Mode: Processing only videos without transcripts")
-    else:
-        # Get all videos
-        query = select(Video)
-        print("Mode: Processing all videos (will overwrite existing transcripts)")
+    query = (
+        select(Video)
+        .outerjoin(Transcript, Video.video_id == Transcript.video_id)
+        .where(Transcript.video_id.is_(None))
+        .order_by(Video.published_at.asc())  # Oldest first
+        .limit(max_videos)
+    )
     
-    if max_videos:
-        query = query.limit(max_videos)
-        print(f"Limit: Processing maximum {max_videos} videos")
+    print(f"Selecting up to {max_videos} oldest videos without transcripts")
     
     videos = db.execute(query).scalars().all()
     total_videos = len(videos)
     
     if total_videos == 0:
-        print("\nNo videos to process.")
+        print("\nNo videos to process. All videos already have transcripts!")
         db.close()
         return
     
     print(f"\n{'=' * 80}")
-    print(f"Processing {total_videos} videos")
+    print(f"Processing {total_videos} video{'s' if total_videos > 1 else ''}")
     print(f"{'=' * 80}\n")
     
     # Initialize transcript service
@@ -165,19 +158,27 @@ def fetch_transcripts(skip_existing: bool = True, max_videos: int | None = None,
     
     # Track statistics
     success_count = 0
-    no_transcript_count = 0
     error_count = 0
+    total_cost = 0.0
     
     try:
         for idx, video in enumerate(videos, 1):
             video_id = video.video_id
             title = video.title[:60] + "..." if len(video.title) > 60 else video.title
+            duration_min = (video.duration_seconds / 60) if video.duration_seconds else 0
+            estimated_cost = duration_min * 0.006  # $0.006 per minute
             
             print(f"[{idx}/{total_videos}] Processing: {video_id}")
             print(f"  Title: {title}")
+            print(f"  Published: {video.published_at}")
+            print(f"  Duration: {duration_min:.1f} minutes")
+            print(f"  Estimated cost: ${estimated_cost:.3f}")
             
-            # Fetch transcript from YouTube
-            transcript_data = transcript_service.fetch_youtube_transcript(video_id)
+            # Transcribe with Whisper
+            transcript_data = transcript_service.transcribe_with_whisper(
+                video_id=video_id,
+                youtube_url=video.url
+            )
             
             if transcript_data:
                 # Save to disk
@@ -192,35 +193,37 @@ def fetch_transcripts(skip_existing: bool = True, max_videos: int | None = None,
                 # Save to database
                 if upsert_transcript(db, transcript_data):
                     success_count += 1
-                    lang = transcript_data['language']
+                    total_cost += estimated_cost
                     segments = len(transcript_data['segments'])
                     chars = len(transcript_data['full_text'])
-                    print(f"  ✓ Transcript saved (lang={lang}, segments={segments}, chars={chars})")
+                    print(f"  ✓ Transcript saved (segments={segments}, chars={chars})")
                 else:
                     error_count += 1
                     print(f"  ✗ Failed to save to database")
             else:
-                no_transcript_count += 1
-                print(f"  ⊘ No transcript available")
+                error_count += 1
+                print(f"  ✗ Transcription failed")
             
-            # Add delay between requests to avoid rate limiting
-            if idx < total_videos:  # Don't delay after the last video
+            # Add delay between videos
+            if idx < total_videos:
+                print(f"  ⏳ Waiting {delay_seconds} seconds...\n")
                 time.sleep(delay_seconds)
-            
-            print()  # Blank line between videos
+            else:
+                print()  # Blank line after last video
             
     finally:
         db.close()
     
     # Print summary
     print(f"{'=' * 80}")
-    print("Transcript Fetching Summary")
+    print("Whisper Transcription Summary")
     print(f"{'=' * 80}")
     print(f"Total videos processed: {total_videos}")
-    print(f"Transcripts successfully fetched: {success_count}")
-    print(f"No transcript available: {no_transcript_count}")
+    print(f"Transcripts successfully created: {success_count}")
     print(f"Errors: {error_count}")
-    print(f"\nSuccess rate: {(success_count/total_videos*100):.1f}%")
+    if success_count > 0:
+        print(f"\nEstimated total cost: ${total_cost:.2f}")
+        print(f"Success rate: {(success_count/total_videos*100):.1f}%")
     print(f"Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'=' * 80}\n")
 
@@ -229,25 +232,31 @@ if __name__ == "__main__":
     import sys
     
     # Parse command line arguments
-    skip_existing = True
-    max_videos = None
-    delay_seconds = 1.0  # Default 1 second delay
+    max_videos = 10  # Default to 10 videos
+    delay_seconds = 1.0
     
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--all":
-            skip_existing = False
-        elif sys.argv[1] == "--test":
-            max_videos = 10
-            print("\n🧪 TEST MODE: Processing only 10 videos\n")
-        
-        # Check for --delay argument
-        if "--delay" in sys.argv:
-            delay_idx = sys.argv.index("--delay")
-            if delay_idx + 1 < len(sys.argv):
-                try:
-                    delay_seconds = float(sys.argv[delay_idx + 1])
-                    print(f"⏱️  Using custom delay: {delay_seconds} seconds\n")
-                except ValueError:
-                    print(f"⚠️  Invalid delay value, using default: {delay_seconds} seconds\n")
+    # Check for --count or -n flag
+    if "--count" in sys.argv:
+        count_idx = sys.argv.index("--count")
+        if count_idx + 1 < len(sys.argv):
+            try:
+                max_videos = int(sys.argv[count_idx + 1])
+            except ValueError:
+                print(f"⚠️  Invalid count value, using default: {max_videos}\n")
+    elif "-n" in sys.argv:
+        count_idx = sys.argv.index("-n")
+        if count_idx + 1 < len(sys.argv):
+            try:
+                max_videos = int(sys.argv[count_idx + 1])
+            except ValueError:
+                print(f"⚠️  Invalid count value, using default: {max_videos}\n")
     
-    fetch_transcripts(skip_existing=skip_existing, max_videos=max_videos, delay_seconds=delay_seconds)
+    if "--delay" in sys.argv:
+        delay_idx = sys.argv.index("--delay")
+        if delay_idx + 1 < len(sys.argv):
+            try:
+                delay_seconds = float(sys.argv[delay_idx + 1])
+            except ValueError:
+                print(f"⚠️  Invalid delay value, using default: {delay_seconds} seconds\n")
+    
+    transcribe_videos(max_videos=max_videos, delay_seconds=delay_seconds)

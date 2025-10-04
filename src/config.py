@@ -21,6 +21,7 @@ class Config:
         # Required secrets / config
         self.database_url: str = self._get_required_env("DATABASE_URL")
         self.youtube_api_key: str = self._get_required_env("YOUTUBE_API_KEY")
+        self.openai_api_key: str = self._get_required_env("OPENAI_API_KEY")
 
         # Public channel ID: treated as non-secret. Default is embedded here
         # but can be overridden via the environment variable YOUTUBE_CHANNEL_ID.
@@ -51,6 +52,7 @@ class Config:
         return (
             f"Config(database_url='{self._mask_value(self.database_url)}', "
             f"youtube_api_key='{self._mask_value(self.youtube_api_key)}', "
+            f"openai_api_key='{self._mask_value(self.openai_api_key)}', "
             f"youtube_channel_id='{self.youtube_channel_id}', "
             f"data_dir='{self.data_dir}')"
         )
