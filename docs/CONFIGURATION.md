@@ -13,14 +13,16 @@ The application uses a `.env` file to store configuration values. This file is n
    cp .env.example .env
    ```
 
-2. Edit the `.env` file with your actual values:
+2. Edit the `.env` file with your actual values (the channel id is optional):
    ```bash
    # Database Configuration
    DATABASE_URL=postgresql://username:password@host:port/database_name
    
    # YouTube API Configuration
-   YOUTUBE_API_KEY=your_actual_youtube_api_key
-   YOUTUBE_CHANNEL_ID=actual_channel_id
+  YOUTUBE_API_KEY=your_actual_youtube_api_key
+  # YOUTUBE_CHANNEL_ID is optional; the project defaults to a public channel id
+  # but you can override it here if needed:
+  # YOUTUBE_CHANNEL_ID=actual_channel_id
    ```
 
 ## Configuration Variables
