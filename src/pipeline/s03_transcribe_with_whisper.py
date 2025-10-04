@@ -3,16 +3,17 @@ Whisper transcription script - Step 3 of the pipeline.
 
 This script:
 1. Fetches all videos from the database that don't have Whisper transcripts yet
-2. Downloads audio using yt-dlp
-3. Transcribes using OpenAI's Whisper API
+2. Downloads audio using yt-dlp (sequentially to avoid YouTube rate limiting)
+3. Transcribes using OpenAI's Whisper API (in parallel batches)
 4. Saves transcripts to BOTH database AND disk (data/transcripts/<video_id>.json)
-5. Supports --test mode to process just one video (the oldest)
+5. Supports parallel processing with --parallel flag (default: 3 concurrent transcriptions)
 """
 
 import json
 import time
 from datetime import datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import OperationalError
@@ -98,19 +99,76 @@ def upsert_transcript(db, transcript_data: dict) -> bool:
         return False
 
 
-def transcribe_videos(max_videos: int = 10, delay_seconds: float = 1.0):
+def transcribe_single_video(video_data: dict, transcript_service: TranscriptService, transcripts_dir: Path, db_session):
+    """
+    Transcribe a single video (used for parallel processing).
+    
+    Args:
+        video_data: Dictionary with video info (video_id, url, title, duration_seconds, published_at)
+        transcript_service: TranscriptService instance
+        transcripts_dir: Directory to save transcripts
+        db_session: Database session
+        
+    Returns:
+        Dictionary with result info
+    """
+    video_id = video_data['video_id']
+    title = video_data['title'][:60] + "..." if len(video_data['title']) > 60 else video_data['title']
+    duration_min = (video_data['duration_seconds'] / 60) if video_data['duration_seconds'] else 0
+    estimated_cost = duration_min * 0.006
+    
+    print(f"\n[{video_id}] Starting transcription")
+    print(f"  Title: {title}")
+    print(f"  Duration: {duration_min:.1f} minutes")
+    print(f"  Estimated cost: ${estimated_cost:.3f}")
+    
+    # Transcribe with Whisper
+    transcript_data = transcript_service.transcribe_with_whisper(
+        video_id=video_id,
+        youtube_url=video_data['url']
+    )
+    
+    if transcript_data:
+        # Save to disk
+        try:
+            disk_path = save_transcript_to_disk(video_id, transcript_data, transcripts_dir)
+            print(f"  ✓ [{video_id}] Saved to disk: {disk_path.name}")
+        except Exception as e:
+            print(f"  ✗ [{video_id}] Failed to save to disk: {e}")
+            return {'success': False, 'video_id': video_id, 'cost': 0}
+        
+        # Save to database
+        if upsert_transcript(db_session, transcript_data):
+            segments = len(transcript_data['segments'])
+            chars = len(transcript_data['full_text'])
+            print(f"  ✓ [{video_id}] Transcript saved (segments={segments}, chars={chars})")
+            return {'success': True, 'video_id': video_id, 'cost': estimated_cost}
+        else:
+            print(f"  ✗ [{video_id}] Failed to save to database")
+            return {'success': False, 'video_id': video_id, 'cost': 0}
+    else:
+        print(f"  ✗ [{video_id}] Transcription failed")
+        return {'success': False, 'video_id': video_id, 'cost': 0}
+
+
+def transcribe_videos(max_videos: int = 10, delay_seconds: float = 1.0, parallel_workers: int = 3):
     """
     Main transcription function.
     
     Args:
         max_videos: Maximum number of videos to process (default: 10)
         delay_seconds: Delay in seconds between videos to avoid rate limiting
+        parallel_workers: Number of parallel Whisper API calls (default: 3, max: 5)
     """
+    # Limit parallel workers to 5
+    parallel_workers = min(parallel_workers, 5)
+    
     print("=" * 80)
     print("Butbul Halacha Whisper Transcription - Step 3")
     print("=" * 80)
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Processing up to {max_videos} video{'s' if max_videos != 1 else ''}")
+    print(f"Parallel workers: {parallel_workers}")
     print(f"Delay between videos: {delay_seconds} seconds\n")
     
     # Initialize database
@@ -161,55 +219,56 @@ def transcribe_videos(max_videos: int = 10, delay_seconds: float = 1.0):
     error_count = 0
     total_cost = 0.0
     
+    # Convert videos to dict format for parallel processing
+    video_data_list = []
+    for video in videos:
+        video_data_list.append({
+            'video_id': video.video_id,
+            'url': video.url,
+            'title': video.title,
+            'duration_seconds': video.duration_seconds,
+            'published_at': video.published_at
+        })
+    
     try:
-        for idx, video in enumerate(videos, 1):
-            video_id = video.video_id
-            title = video.title[:60] + "..." if len(video.title) > 60 else video.title
-            duration_min = (video.duration_seconds / 60) if video.duration_seconds else 0
-            estimated_cost = duration_min * 0.006  # $0.006 per minute
-            
-            print(f"[{idx}/{total_videos}] Processing: {video_id}")
-            print(f"  Title: {title}")
-            print(f"  Published: {video.published_at}")
-            print(f"  Duration: {duration_min:.1f} minutes")
-            print(f"  Estimated cost: ${estimated_cost:.3f}")
-            
-            # Transcribe with Whisper
-            transcript_data = transcript_service.transcribe_with_whisper(
-                video_id=video_id,
-                youtube_url=video.url
-            )
-            
-            if transcript_data:
-                # Save to disk
-                try:
-                    disk_path = save_transcript_to_disk(video_id, transcript_data, transcripts_dir)
-                    print(f"  ✓ Saved to disk: {disk_path.name}")
-                except Exception as e:
-                    print(f"  ✗ Failed to save to disk: {e}")
-                    error_count += 1
-                    continue
+        # Process videos in parallel batches
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            # Submit all tasks
+            future_to_video = {}
+            for idx, video_data in enumerate(video_data_list, 1):
+                print(f"\n[{idx}/{total_videos}] Queuing: {video_data['video_id']}")
+                future = executor.submit(
+                    transcribe_single_video,
+                    video_data,
+                    transcript_service,
+                    transcripts_dir,
+                    db
+                )
+                future_to_video[future] = (idx, video_data)
                 
-                # Save to database
-                if upsert_transcript(db, transcript_data):
-                    success_count += 1
-                    total_cost += estimated_cost
-                    segments = len(transcript_data['segments'])
-                    chars = len(transcript_data['full_text'])
-                    print(f"  ✓ Transcript saved (segments={segments}, chars={chars})")
-                else:
-                    error_count += 1
-                    print(f"  ✗ Failed to save to database")
-            else:
-                error_count += 1
-                print(f"  ✗ Transcription failed")
+                # Small delay between queuing to avoid overwhelming YouTube
+                if idx < total_videos:
+                    time.sleep(delay_seconds)
             
-            # Add delay between videos
-            if idx < total_videos:
-                print(f"  ⏳ Waiting {delay_seconds} seconds...\n")
-                time.sleep(delay_seconds)
-            else:
-                print()  # Blank line after last video
+            # Collect results as they complete
+            print(f"\n{'=' * 80}")
+            print("Waiting for transcriptions to complete...")
+            print(f"{'=' * 80}\n")
+            
+            for future in as_completed(future_to_video):
+                idx, video_data = future_to_video[future]
+                try:
+                    result = future.result()
+                    if result['success']:
+                        success_count += 1
+                        total_cost += result['cost']
+                        print(f"✓ Completed {success_count}/{total_videos}: {result['video_id']}")
+                    else:
+                        error_count += 1
+                        print(f"✗ Failed {error_count}/{total_videos}: {result['video_id']}")
+                except Exception as e:
+                    error_count += 1
+                    print(f"✗ Exception for {video_data['video_id']}: {e}")
             
     finally:
         db.close()
@@ -234,6 +293,7 @@ if __name__ == "__main__":
     # Parse command line arguments
     max_videos = 10  # Default to 10 videos
     delay_seconds = 1.0
+    parallel_workers = 3  # Default to 3 parallel workers
     
     # Check for --count or -n flag
     if "--count" in sys.argv:
@@ -251,6 +311,28 @@ if __name__ == "__main__":
             except ValueError:
                 print(f"⚠️  Invalid count value, using default: {max_videos}\n")
     
+    # Check for --parallel or -p flag
+    if "--parallel" in sys.argv:
+        parallel_idx = sys.argv.index("--parallel")
+        if parallel_idx + 1 < len(sys.argv):
+            try:
+                parallel_workers = int(sys.argv[parallel_idx + 1])
+                if parallel_workers > 5:
+                    print(f"⚠️  Limiting parallel workers to maximum of 5\n")
+                    parallel_workers = 5
+            except ValueError:
+                print(f"⚠️  Invalid parallel value, using default: {parallel_workers}\n")
+    elif "-p" in sys.argv:
+        parallel_idx = sys.argv.index("-p")
+        if parallel_idx + 1 < len(sys.argv):
+            try:
+                parallel_workers = int(sys.argv[parallel_idx + 1])
+                if parallel_workers > 5:
+                    print(f"⚠️  Limiting parallel workers to maximum of 5\n")
+                    parallel_workers = 5
+            except ValueError:
+                print(f"⚠️  Invalid parallel value, using default: {parallel_workers}\n")
+    
     if "--delay" in sys.argv:
         delay_idx = sys.argv.index("--delay")
         if delay_idx + 1 < len(sys.argv):
@@ -259,4 +341,4 @@ if __name__ == "__main__":
             except ValueError:
                 print(f"⚠️  Invalid delay value, using default: {delay_seconds} seconds\n")
     
-    transcribe_videos(max_videos=max_videos, delay_seconds=delay_seconds)
+    transcribe_videos(max_videos=max_videos, delay_seconds=delay_seconds, parallel_workers=parallel_workers)
