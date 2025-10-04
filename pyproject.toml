@@ -14,6 +14,7 @@ google-api-python-client = "^2.158.0"
 python-dotenv = "^1.0.1"
 alembic = "^1.16.5"
 pyluach = "^2.3.0"
+youtube-transcript-api = {version = ">=1.2.2", python = ">=3.12,<3.14"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"

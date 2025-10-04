@@ -3,7 +3,8 @@ Database models and connection management.
 """
 
 from datetime import datetime
-from sqlalchemy import create_engine, Column, String, DateTime, Text
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, sessionmaker
 from src.config import config
 
@@ -30,6 +31,9 @@ class Video(Base):
     
     # Published date (when video was published, not uploaded)
     published_at = Column(DateTime, nullable=True, comment="Video publish date")
+    
+    # Video duration in seconds
+    duration_seconds = Column(Integer, nullable=True, comment="Video duration in seconds")
     
     # Metadata timestamps
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow, comment="Record creation timestamp")
@@ -62,6 +66,34 @@ class VideoMetadata(Base):
 
     def __repr__(self):
         return f"<VideoMetadata(video_id='{self.video_id}', hebrew_date='{self.hebrew_date}', subject='{self.subject[:50]}...')>"
+
+
+class Transcript(Base):
+    """Model for storing video transcripts from various sources."""
+
+    __tablename__ = "transcripts"
+
+    # Foreign key to videos table
+    video_id = Column(String(20), ForeignKey('videos.video_id', ondelete='CASCADE'), primary_key=True, comment="YouTube video ID (FK to videos)")
+    
+    # Transcript source (youtube, whisper, etc.)
+    source = Column(String(20), nullable=False, comment="Transcript source: youtube or whisper")
+    
+    # Language code
+    language = Column(String(10), nullable=True, comment="Transcript language code (e.g., he, en)")
+    
+    # Full transcript text
+    full_text = Column(Text, nullable=False, comment="Complete transcript text")
+    
+    # Segments with timestamps (JSONB for flexibility)
+    segments = Column(JSONB, nullable=True, comment="Transcript segments with timestamps")
+    
+    # Metadata timestamps
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, comment="Record creation timestamp")
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow, comment="Record last update timestamp")
+
+    def __repr__(self):
+        return f"<Transcript(video_id='{self.video_id}', source='{self.source}', language='{self.language}')>"
 
 
 # Database engine and session factory

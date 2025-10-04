@@ -3,6 +3,7 @@ YouTube API service for fetching playlists and videos.
 """
 
 import logging
+import re
 from typing import List, Dict, Optional
 from datetime import datetime
 from googleapiclient.discovery import build
@@ -13,6 +14,38 @@ from src.config import config
 logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
 logging.getLogger('googleapiclient.discovery').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
+
+
+def parse_youtube_duration(duration_str: str) -> Optional[int]:
+    """
+    Parse YouTube's ISO 8601 duration format to seconds.
+    
+    YouTube returns durations like:
+    - PT1H2M3S = 1 hour, 2 minutes, 3 seconds = 3723 seconds
+    - PT15M30S = 15 minutes, 30 seconds = 930 seconds
+    - PT45S = 45 seconds
+    
+    Args:
+        duration_str: ISO 8601 duration string (e.g., 'PT1H2M3S')
+        
+    Returns:
+        Total duration in seconds, or None if parsing fails
+    """
+    if not duration_str:
+        return None
+        
+    # Regex to parse PT1H2M3S format
+    pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
+    match = re.match(pattern, duration_str)
+    
+    if not match:
+        return None
+        
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2) or 0)
+    seconds = int(match.group(3) or 0)
+    
+    return hours * 3600 + minutes * 60 + seconds
 
 
 class YouTubeService:
@@ -79,6 +112,46 @@ class YouTubeService:
         except HttpError as e:
             print(f"An HTTP error occurred: {e}")
             raise
+
+    def get_video_details(self, video_ids: List[str]) -> Dict[str, Dict]:
+        """
+        Get detailed information for a list of videos including duration.
+        
+        YouTube API allows fetching up to 50 videos per request.
+        
+        Args:
+            video_ids: List of YouTube video IDs (max 50 per call)
+            
+        Returns:
+            Dictionary mapping video_id to video details including duration_seconds
+        """
+        if not video_ids:
+            return {}
+            
+        video_details = {}
+        
+        try:
+            # YouTube API allows max 50 IDs per request
+            request = self.youtube.videos().list(
+                part='contentDetails',
+                id=','.join(video_ids[:50])  # Limit to 50 IDs
+            )
+            response = request.execute()
+            
+            for item in response.get('items', []):
+                video_id = item['id']
+                duration_str = item['contentDetails'].get('duration')
+                duration_seconds = parse_youtube_duration(duration_str)
+                
+                video_details[video_id] = {
+                    'duration_seconds': duration_seconds
+                }
+            
+            return video_details
+            
+        except HttpError as e:
+            print(f"An HTTP error occurred fetching video details: {e}")
+            return {}
 
     def get_playlist_videos(self, playlist_id: str) -> List[Dict]:
         """

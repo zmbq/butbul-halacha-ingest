@@ -72,6 +72,7 @@ def upsert_videos_batch(db, videos_batch: list) -> tuple[int, int]:
                     'title': video_data.get('title', ''),
                     'description': video_data['description'],
                     'published_at': video_data['published_at'],
+                    'duration_seconds': video_data.get('duration_seconds'),
                     'updated_at': current_time
                 })        # Use PostgreSQL's ON CONFLICT to handle upsert for the entire batch
         stmt = insert(Video).values(insert_data)
@@ -84,6 +85,7 @@ def upsert_videos_batch(db, videos_batch: list) -> tuple[int, int]:
                 'title': stmt.excluded.title,
                 'description': stmt.excluded.description,
                 'published_at': stmt.excluded.published_at,
+                'duration_seconds': stmt.excluded.duration_seconds,
                 'updated_at': stmt.excluded.updated_at
             }
         )
@@ -122,6 +124,26 @@ def ingest_videos(playlist_filter: str = "הלכה יומית"):
     if not videos:
         print("\nNo videos found matching the criteria.")
         return
+
+    # Fetch duration details for all videos
+    print(f"\nFetching duration details for {len(videos)} videos...")
+    video_ids = [v['video_id'] for v in videos]
+    
+    # Process in batches of 50 (YouTube API limit)
+    batch_size = 50
+    for i in range(0, len(video_ids), batch_size):
+        batch_ids = video_ids[i:i + batch_size]
+        details = youtube_service.get_video_details(batch_ids)
+        
+        # Update videos with duration information
+        for video in videos:
+            if video['video_id'] in details:
+                video['duration_seconds'] = details[video['video_id']]['duration_seconds']
+        
+        processed = min(i + batch_size, len(video_ids))
+        print(f"  Fetched details for {processed}/{len(video_ids)} videos")
+    
+    print(f"✓ Duration details fetched successfully")
 
     # Always save JSON backup first (as a safety measure)
     print(f"\n{'=' * 80}")
