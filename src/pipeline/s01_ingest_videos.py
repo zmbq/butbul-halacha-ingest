@@ -145,6 +145,17 @@ def ingest_videos(playlist_filter: str = "הלכה יומית"):
     
     print(f"✓ Duration details fetched successfully")
 
+    # Filter out videos longer than 10 minutes (600 seconds)
+    max_duration_seconds = 10 * 60
+    long_videos = [v for v in videos if v.get('duration_seconds') and v['duration_seconds'] > max_duration_seconds]
+    if long_videos:
+        print(f"\nDetected {len(long_videos)} video(s) longer than 10 minutes. These will be skipped and not stored.")
+        for v in long_videos:
+            print(f"  - Skipping {v['video_id']} ({v.get('duration_seconds')}s): {v.get('title')}")
+
+    # Keep only videos not exceeding the maximum duration (or without duration info)
+    videos = [v for v in videos if not (v.get('duration_seconds') and v['duration_seconds'] > max_duration_seconds)]
+
     # Always save JSON backup first (as a safety measure)
     print(f"\n{'=' * 80}")
     print("Saving JSON Backup")
