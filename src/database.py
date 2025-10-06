@@ -3,8 +3,13 @@ Database models and connection management.
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer, ForeignKey, Float, Index, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer, ForeignKey, Float, Index, UniqueConstraint, CheckConstraint
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
+try:
+    # pgvector integration (optional dependency)
+    from pgvector.sqlalchemy import Vector
+except Exception:  # pragma: no cover - import-time fallback
+    Vector = None  # type: ignore
 from sqlalchemy.orm import declarative_base, sessionmaker
 from src.config import config
 
@@ -182,6 +187,74 @@ class TranscriptionChunk(Base):
 
     def __repr__(self):
         return f"<TranscriptionChunk(id={self.id}, video_id='{self.video_id}', first={self.first_segment_id}, last={self.last_segment_id})>"
+
+
+class EmbeddingCache(Base):
+    """Cache of embedding calls to avoid re-requesting the same text/model.
+
+    Stores the original text, model name, the resulting vector and timestamps.
+    """
+
+    __tablename__ = 'embeddings_cache'
+
+    id = Column(Integer, primary_key=True, comment='Cache primary key')
+    text = Column(Text, nullable=False, comment='Original text that was embedded')
+    model = Column(String(128), nullable=False, comment='Model used to create the embedding')
+    # Using pgvector Vector type for efficient storage and kNN support.
+    # Assumes embeddings dimension 1536 for `text-embedding-3-small`.
+    # Use pgvector Vector type when available, otherwise fallback to float[]
+    vector = Column(Vector(1536) if Vector is not None else ARRAY(Float), nullable=False, comment='Embedding vector (pgvector or float[])')
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), comment='Record creation timestamp')
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment='Record last update timestamp')
+
+    __table_args__ = (
+        # avoid duplicating identical cache entries for same text+model
+        UniqueConstraint('text', 'model', name='uq_embeddings_cache_text_model'),
+        Index('ix_embeddings_cache_model', 'model'),
+    )
+
+    def __repr__(self):
+        # Avoid accessing column value directly in repr (may be a descriptor outside session)
+        text_preview = (self.text[:30] + '...') if isinstance(self.text, str) and len(self.text) > 30 else (self.text if isinstance(self.text, str) else None)
+        return f"<EmbeddingCache(id={self.id}, model='{self.model}', text_preview={text_preview})>"
+
+
+class Embedding(Base):
+    """Primary embeddings table for search/nearest-neighbor queries.
+
+    An embedding can be associated with a transcription chunk (preferred for
+    chunk embeddings) or with a video/subject (for subject embeddings). The
+    `kind` column describes the embedding type (e.g., 'chunk', 'subject').
+    """
+
+    __tablename__ = 'embeddings'
+
+    id = Column(Integer, primary_key=True, comment='Embedding primary key')
+    video_id = Column(String(20), ForeignKey('videos.video_id', ondelete='CASCADE'), nullable=True, index=True, comment='Optional video id for this embedding')
+    transcription_chunk_id = Column(Integer, ForeignKey('transcription_chunks.id', ondelete='CASCADE'), nullable=True, comment='Optional transcription chunk this embedding is for')
+    kind = Column(String(50), nullable=False, comment="Type of embedding: 'chunk', 'subject', etc.")
+    # `source_cache_id` references the canonical cache row that contains the
+    # exact text used to create the embedding. We keep embedding rows small and
+    # normalized (no duplicated text) by requiring this FK to be present.
+    model = Column(String(128), nullable=False, comment='Model used to create the embedding')
+    vector = Column(Vector(1536) if Vector is not None else ARRAY(Float), nullable=False, comment='Embedding vector (pgvector or float[])')
+    source_cache_id = Column(Integer, ForeignKey('embeddings_cache.id', ondelete='CASCADE'), nullable=False, comment='Reference to cache row that contains the embedded text and vector')
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), comment='Record creation timestamp')
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment='Record last update timestamp')
+
+    __table_args__ = (
+        Index('ix_embeddings_kind_video_chunk', 'kind', 'video_id', 'transcription_chunk_id'),
+    # Enforce that chunk embeddings reference a transcription_chunk_id. A
+    # tighter partial unique index on (transcription_chunk_id, model) is
+    # created via Alembic migration. The `text` column holds the actual text
+    # that was embedded (subject, chunk text, etc.) to detect changes.
+    CheckConstraint("(kind != 'chunk' OR transcription_chunk_id IS NOT NULL)", name='ck_embeddings_kind_fields'),
+    )
+
+    def __repr__(self):
+        return f"<Embedding(id={self.id}, kind='{self.kind}', model='{self.model}')>"
 
 
 # Database engine and session factory

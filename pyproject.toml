@@ -17,6 +17,7 @@ pyluach = "^2.3.0"
 youtube-transcript-api = {version = ">=1.2.2", python = ">=3.12,<3.14"}
 yt-dlp = "^2025.9.26"
 openai = "^2.1.0"
+pgvector = "^0.4.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
