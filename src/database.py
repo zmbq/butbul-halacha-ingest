@@ -237,8 +237,6 @@ class Embedding(Base):
     # `source_cache_id` references the canonical cache row that contains the
     # exact text used to create the embedding. We keep embedding rows small and
     # normalized (no duplicated text) by requiring this FK to be present.
-    model = Column(String(128), nullable=False, comment='Model used to create the embedding')
-    vector = Column(Vector(1536) if Vector is not None else ARRAY(Float), nullable=False, comment='Embedding vector (pgvector or float[])')
     source_cache_id = Column(Integer, ForeignKey('embeddings_cache.id', ondelete='CASCADE'), nullable=False, comment='Reference to cache row that contains the embedded text and vector')
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), comment='Record creation timestamp')
@@ -246,15 +244,12 @@ class Embedding(Base):
 
     __table_args__ = (
         Index('ix_embeddings_kind_video_chunk', 'kind', 'video_id', 'transcription_chunk_id'),
-    # Enforce that chunk embeddings reference a transcription_chunk_id. A
-    # tighter partial unique index on (transcription_chunk_id, model) is
-    # created via Alembic migration. The `text` column holds the actual text
-    # that was embedded (subject, chunk text, etc.) to detect changes.
-    CheckConstraint("(kind != 'chunk' OR transcription_chunk_id IS NOT NULL)", name='ck_embeddings_kind_fields'),
+        # Enforce that chunk embeddings reference a transcription_chunk_id.
+        CheckConstraint("(kind != 'chunk' OR transcription_chunk_id IS NOT NULL)", name='ck_embeddings_kind_fields'),
     )
 
     def __repr__(self):
-        return f"<Embedding(id={self.id}, kind='{self.kind}', model='{self.model}')>"
+        return f"<Embedding(id={self.id}, kind='{self.kind}', source_cache_id={self.source_cache_id})>"
 
 
 # Database engine and session factory

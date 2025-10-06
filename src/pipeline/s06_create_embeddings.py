@@ -82,7 +82,7 @@ def populate_embeddings(kind: str, limit: Optional[int] = None, batch_size: int 
                         if exists:
                             skipped_this_batch += 1
                             continue
-                        emb = Embedding(video_id=item.video_id, transcription_chunk_id=None, kind='subject', model=svc.model, vector=cache_row.vector, source_cache_id=cache_row.id)
+                        emb = Embedding(video_id=item.video_id, transcription_chunk_id=None, kind='subject', source_cache_id=cache_row.id)
                         db.add(emb)
                         created_this_batch += 1
                     except Exception as e:
@@ -144,7 +144,7 @@ def populate_embeddings(kind: str, limit: Optional[int] = None, batch_size: int 
                         if exists:
                             skipped_this_batch += 1
                             continue
-                        emb = Embedding(video_id=item.video_id, transcription_chunk_id=item.id, kind='chunk', model=svc.model, vector=cache_row.vector, source_cache_id=cache_row.id)
+                        emb = Embedding(video_id=item.video_id, transcription_chunk_id=item.id, kind='chunk', source_cache_id=cache_row.id)
                         db.add(emb)
                         created_this_batch += 1
                     except Exception as e:
