@@ -2,8 +2,8 @@
 Database models and connection management.
 """
 
-from datetime import datetime
-from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer, ForeignKey
+from datetime import datetime, timezone
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer, ForeignKey, Float, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, sessionmaker
 from src.config import config
@@ -36,8 +36,8 @@ class Video(Base):
     duration_seconds = Column(Integer, nullable=True, comment="Video duration in seconds")
     
     # Metadata timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, comment="Record creation timestamp")
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow, comment="Record last update timestamp")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), comment="Record creation timestamp")
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="Record last update timestamp")
 
     def __repr__(self):
         return f"<Video(video_id='{self.video_id}', url='{self.url}', published_at='{self.published_at}')>"
@@ -61,8 +61,8 @@ class VideoMetadata(Base):
     subject = Column(String(500), nullable=True, comment="Subject/topic extracted from title")
     
     # Metadata timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, comment="Record creation timestamp")
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow, comment="Record last update timestamp")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), comment="Record creation timestamp")
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="Record last update timestamp")
 
     def __repr__(self):
         return f"<VideoMetadata(video_id='{self.video_id}', hebrew_date='{self.hebrew_date}', subject='{self.subject[:50]}...')>"
@@ -89,11 +89,58 @@ class Transcript(Base):
     segments = Column(JSONB, nullable=True, comment="Transcript segments with timestamps")
     
     # Metadata timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, comment="Record creation timestamp")
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow, comment="Record last update timestamp")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), comment="Record creation timestamp")
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="Record last update timestamp")
 
     def __repr__(self):
         return f"<Transcript(video_id='{self.video_id}', source='{self.source}', language='{self.language}')>"
+
+
+class TranscriptionSegment(Base):
+    """Model for storing individual transcript segments (from Whisper or other sources).
+
+    Each row represents a single contiguous segment with start time, duration, and text.
+    This table is intended to be used for embedding generation and quick time-based queries.
+    """
+
+    __tablename__ = "transcription_segments"
+
+    # Auto-incrementing primary key for the segment
+    id = Column(Integer, primary_key=True, comment="Segment primary key")
+
+    # Reference to the video this segment belongs to. Cascade on video delete.
+    video_id = Column(String(20), ForeignKey('videos.video_id', ondelete='CASCADE'), nullable=False, index=True, comment="YouTube video ID (FK to videos)")
+
+    # Source of the transcript (whisper, youtube, etc.)
+    source = Column(String(20), nullable=False, default='whisper', comment="Transcript source: whisper, youtube, etc.")
+
+    # Order of the segment within the transcript (0-based)
+    segment_index = Column(Integer, nullable=False, comment="Index/order of the segment within the transcript")
+
+    # Segment timing: start (seconds), duration (seconds), and end (seconds)
+    start = Column(Float, nullable=False, comment="Segment start time in seconds")
+    duration = Column(Float, nullable=False, comment="Segment duration in seconds")
+    end = Column(Float, nullable=False, comment="Segment end time in seconds (start + duration)")
+
+    # Transcribed text for this segment
+    text = Column(Text, nullable=False, comment="Transcript text for the segment")
+
+    # Raw segment JSON for any additional Whisper fields (tokens, confidence, etc.)
+    raw = Column(JSONB, nullable=True, comment="Raw segment JSON from the transcription service")
+
+    # Timestamps for record management
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), comment="Record creation timestamp")
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="Record last update timestamp")
+
+    __table_args__ = (
+        # Index to support queries by video and start time
+        Index('ix_transcription_segments_video_start', 'video_id', 'start'),
+        # Uniqueness to prevent duplicate inserts for same video/segment index/source
+        UniqueConstraint('video_id', 'source', 'segment_index', name='uq_transcription_segments_video_source_index'),
+    )
+
+    def __repr__(self):
+        return f"<TranscriptionSegment(id={self.id}, video_id='{self.video_id}', index={self.segment_index}, start={self.start})>"
 
 
 # Database engine and session factory
@@ -140,10 +187,4 @@ def get_db():
         pass  # Session will be closed by caller
 
 
-if __name__ == "__main__":
-    # Recreate tables when run directly (drops and recreates)
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "--recreate":
-        recreate_db()
-    else:
-        init_db()
+# Note: database schema changes should be done via Alembic migrations.

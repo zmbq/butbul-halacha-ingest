@@ -11,7 +11,7 @@ This script:
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from sqlalchemy import select
@@ -41,7 +41,7 @@ def save_transcript_to_disk(video_id: str, transcript_data: dict, transcripts_di
         'language': transcript_data['language'],
         'full_text': transcript_data['full_text'],
         'segments': transcript_data['segments'],
-        'transcribed_at': datetime.utcnow().isoformat()
+        'transcribed_at': datetime.now(timezone.utc).isoformat(),
     }
     
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -62,8 +62,8 @@ def upsert_transcript(db, transcript_data: dict) -> bool:
         True if successful, False otherwise
     """
     try:
-        current_time = datetime.utcnow()
-        
+        current_time = datetime.now(timezone.utc)
+
         # Prepare data for insert
         insert_data = {
             'video_id': transcript_data['video_id'],
@@ -166,7 +166,7 @@ def transcribe_videos(max_videos: int = 10, delay_seconds: float = 1.0, parallel
     print("=" * 80)
     print("Butbul Halacha Whisper Transcription - Step 3")
     print("=" * 80)
-    print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Started at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')}")
     print(f"Processing up to {max_videos} video{'s' if max_videos != 1 else ''}")
     print(f"Parallel workers: {parallel_workers}")
     print(f"Delay between videos: {delay_seconds} seconds\n")
@@ -283,62 +283,22 @@ def transcribe_videos(max_videos: int = 10, delay_seconds: float = 1.0, parallel
     if success_count > 0:
         print(f"\nEstimated total cost: ${total_cost:.2f}")
         print(f"Success rate: {(success_count/total_videos*100):.1f}%")
-    print(f"Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Completed at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')}")
     print(f"{'=' * 80}\n")
 
 
 if __name__ == "__main__":
-    import sys
-    
-    # Parse command line arguments
-    max_videos = 10  # Default to 10 videos
-    delay_seconds = 1.0
-    parallel_workers = 3  # Default to 3 parallel workers
-    
-    # Check for --count or -n flag
-    if "--count" in sys.argv:
-        count_idx = sys.argv.index("--count")
-        if count_idx + 1 < len(sys.argv):
-            try:
-                max_videos = int(sys.argv[count_idx + 1])
-            except ValueError:
-                print(f"⚠️  Invalid count value, using default: {max_videos}\n")
-    elif "-n" in sys.argv:
-        count_idx = sys.argv.index("-n")
-        if count_idx + 1 < len(sys.argv):
-            try:
-                max_videos = int(sys.argv[count_idx + 1])
-            except ValueError:
-                print(f"⚠️  Invalid count value, using default: {max_videos}\n")
-    
-    # Check for --parallel or -p flag
-    if "--parallel" in sys.argv:
-        parallel_idx = sys.argv.index("--parallel")
-        if parallel_idx + 1 < len(sys.argv):
-            try:
-                parallel_workers = int(sys.argv[parallel_idx + 1])
-                if parallel_workers > 5:
-                    print(f"⚠️  Limiting parallel workers to maximum of 5\n")
-                    parallel_workers = 5
-            except ValueError:
-                print(f"⚠️  Invalid parallel value, using default: {parallel_workers}\n")
-    elif "-p" in sys.argv:
-        parallel_idx = sys.argv.index("-p")
-        if parallel_idx + 1 < len(sys.argv):
-            try:
-                parallel_workers = int(sys.argv[parallel_idx + 1])
-                if parallel_workers > 5:
-                    print(f"⚠️  Limiting parallel workers to maximum of 5\n")
-                    parallel_workers = 5
-            except ValueError:
-                print(f"⚠️  Invalid parallel value, using default: {parallel_workers}\n")
-    
-    if "--delay" in sys.argv:
-        delay_idx = sys.argv.index("--delay")
-        if delay_idx + 1 < len(sys.argv):
-            try:
-                delay_seconds = float(sys.argv[delay_idx + 1])
-            except ValueError:
-                print(f"⚠️  Invalid delay value, using default: {delay_seconds} seconds\n")
-    
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Run Whisper transcription pipeline')
+    parser.add_argument('--count', '-n', type=int, default=10, help='Maximum number of videos to process')
+    parser.add_argument('--parallel', '-p', type=int, default=3, help='Number of parallel Whisper API calls (max 5)')
+    parser.add_argument('--delay', type=float, default=1.0, help='Delay in seconds between queuing videos')
+
+    args = parser.parse_args()
+
+    max_videos = args.count
+    parallel_workers = min(args.parallel, 5)
+    delay_seconds = args.delay
+
     transcribe_videos(max_videos=max_videos, delay_seconds=delay_seconds, parallel_workers=parallel_workers)

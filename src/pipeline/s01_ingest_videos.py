@@ -8,7 +8,7 @@ This script:
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -111,7 +111,7 @@ def ingest_videos(playlist_filter: str = "הלכה יומית"):
     print("Butbul Halacha Video Ingestion - Step 1")
     print("=" * 80)
     print(f"\nSearching for playlists containing: '{playlist_filter}'")
-    print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    print(f"Started at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')}\n")
 
     # Initialize YouTube service
     print("Connecting to YouTube API...")
@@ -222,9 +222,15 @@ def ingest_videos(playlist_filter: str = "הלכה יומית"):
         print(f"Database: ✗ Not updated (connection failed)")
         print(f"\n💡 To import JSON to database later, run:")
         print(f"   poetry run python src/import_from_json.py data/{json_path.name}")
-    print(f"Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Completed at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')}")
     print(f"{'=' * 80}\n")
 
 
 if __name__ == "__main__":
-    ingest_videos()
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Ingest videos from YouTube playlists')
+    parser.add_argument('--filter', type=str, default='הלכה יומית', help='Playlist name filter string')
+    args = parser.parse_args()
+
+    ingest_videos(playlist_filter=args.filter)

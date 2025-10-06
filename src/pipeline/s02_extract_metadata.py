@@ -9,7 +9,7 @@ Description format: "הלכה יומית - [Hebrew Date] - [Subject]"
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from ..database import get_db, Video, VideoMetadata
@@ -79,9 +79,9 @@ def upsert_metadata_batch(db, metadata_batch: list) -> tuple[int, int]:
         return 0, 0
     
     try:
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
         insert_data = []
-        
+
         for metadata in metadata_batch:
             insert_data.append({
                 'video_id': metadata['video_id'],
@@ -89,7 +89,7 @@ def upsert_metadata_batch(db, metadata_batch: list) -> tuple[int, int]:
                 'day_of_week': metadata['day_of_week'],
                 'subject': metadata['subject'],
                 'created_at': current_time,
-                'updated_at': current_time
+                'updated_at': current_time,
             })
         
         # Use PostgreSQL's ON CONFLICT to handle upsert
@@ -121,7 +121,7 @@ def extract_all_metadata():
     print("=" * 80)
     print("Video Metadata Extraction")
     print("=" * 80)
-    print(f"\nStarted at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    print(f"\nStarted at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')}\n")
     
     db = get_db()
     
@@ -194,9 +194,11 @@ def extract_all_metadata():
         print(f"Successfully stored metadata: {success_count}")
         print(f"Database errors: {error_count}")
         print(f"Extraction errors (no date found): {extraction_errors}")
-        print(f"Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # Summary finish time and separator
+        print(f"Completed at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')}")
         print(f"{'=' * 80}\n")
-        
+
         # Show some sample results
         if success_count > 0:
             print("Sample extracted metadata:")
@@ -209,7 +211,7 @@ def extract_all_metadata():
                 print(f"Day of Week: {sample.day_of_week}")
                 print(f"Subject: {sample.subject}")
                 print("-" * 80)
-        
+
     finally:
         db.close()
 
