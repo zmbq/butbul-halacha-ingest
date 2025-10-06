@@ -46,10 +46,13 @@ def populate_embeddings(kind: str, limit: Optional[int] = None, batch_size: int 
 
             # batch and call service
             total_items = len(texts)
+            num_batches = (total_items + batch_size - 1) // batch_size
+            print(f"Will process {total_items} subjects in {num_batches} batches (batch_size={batch_size})")
             for batch_index, i in enumerate(range(0, len(texts), batch_size), start=1):
                 batch_texts = texts[i:i+batch_size]
                 batch_items = items[i:i+batch_size]
                 batch_start = perf_counter()
+                print(f"Starting subjects batch {batch_index}/{num_batches} with {len(batch_items)} items...")
                 try:
                     pairs = svc.embed_bulk_with_cache(db, batch_texts)
                 except Exception as e:
@@ -105,10 +108,13 @@ def populate_embeddings(kind: str, limit: Optional[int] = None, batch_size: int 
             texts = [str(getattr(r, 'text', '')) for r in items]
 
             total_items = len(texts)
+            num_batches = (total_items + batch_size - 1) // batch_size
+            print(f"Will process {total_items} chunks in {num_batches} batches (batch_size={batch_size})")
             for batch_index, i in enumerate(range(0, len(texts), batch_size), start=1):
                 batch_texts = texts[i:i+batch_size]
                 batch_items = items[i:i+batch_size]
                 batch_start = perf_counter()
+                print(f"Starting chunks batch {batch_index}/{num_batches} with {len(batch_items)} items...")
                 try:
                     pairs = svc.embed_bulk_with_cache(db, batch_texts)
                 except Exception as e:
