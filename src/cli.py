@@ -13,6 +13,7 @@ from .pipeline.s03_transcribe_with_whisper import transcribe_videos
 from .pipeline.s04_populate_transcription_segments import populate_segments, clear_segments_table
 from .pipeline.s05_create_transcription_chunks import populate_chunks
 from .pipeline.s06_create_embeddings import populate_embeddings
+from .pipeline.s07_tag_videos import run as run_tag_videos
 
 
 def main():
@@ -51,6 +52,9 @@ def main():
     p6.add_argument('--batch-size', type=int, default=64, help='Batch size for OpenAI calls')
     p6.add_argument('--dry-run', action='store_true', help='Do not write embeddings to DB')
 
+    # s07
+    p7 = subparsers.add_parser('s07', help='Tag videos by Hebrew year')
+
     # all
     pall = subparsers.add_parser('all', help='Run s01..s04 in sequence')
     pall.add_argument('--limit', type=int, default=None, help='Limit number of transcripts for s04')
@@ -87,6 +91,9 @@ def main():
                 populate_segments()
     elif args.cmd == 's06':
         populate_embeddings(kind=args.kind, limit=args.limit, batch_size=args.batch_size, dry_run=args.dry_run)
+    elif args.cmd == 's07':
+        # s07: tag videos by year
+        run_tag_videos()
 
 
 if __name__ == '__main__':
