@@ -252,6 +252,59 @@ class Embedding(Base):
         return f"<Embedding(id={self.id}, kind='{self.kind}', source_cache_id={self.source_cache_id})>"
 
 
+class Tag(Base):
+    """Tag definitions applied at the video level.
+
+    Types:
+      - date: year or date-derived tags (e.g., 2023)
+      - manual: user-created manual tags
+      - automatic: system-generated tags (may include a vector)
+    """
+
+    __tablename__ = 'tags'
+
+    id = Column(Integer, primary_key=True, comment='Tag primary key')
+    name = Column(String(20), nullable=False, comment='Human-readable tag name (max 20 chars)')
+    description = Column(Text, nullable=True, comment='Optional description for the tag')
+    # type of tag: date, manual, automatic
+    type = Column(String(30), nullable=False, comment="Tag type: 'date' | 'manual' | 'automatic'")
+    # (vector storage removed for now; may be added later)
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), comment='Record creation timestamp')
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment='Record last update timestamp')
+
+    __table_args__ = (
+        UniqueConstraint('name', name='uq_tags_name'),
+        Index('ix_tags_type', 'type'),
+    )
+
+    def __repr__(self):
+        return f"<Tag(id={self.id}, name='{self.name}', type='{self.type}')>"
+
+
+class Tagging(Base):
+    """Associates tags with videos (many-to-many via video-level tagging)."""
+
+    __tablename__ = 'taggings'
+
+    id = Column(Integer, primary_key=True, comment='Tagging primary key')
+    tag_id = Column(Integer, ForeignKey('tags.id', ondelete='CASCADE'), nullable=False, comment='FK to tags')
+    video_id = Column(String(20), ForeignKey('videos.video_id', ondelete='CASCADE'), nullable=False, index=True, comment='FK to videos')
+    # Optional source/metadata about how tagging was created (e.g., 'year-extract', 'manual')
+    source = Column(String(100), nullable=True, comment='Source or method that created this tagging')
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), comment='Record creation timestamp')
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment='Record last update timestamp')
+
+    __table_args__ = (
+        UniqueConstraint('tag_id', 'video_id', name='uq_taggings_tag_video'),
+        Index('ix_taggings_tag_video', 'tag_id', 'video_id'),
+    )
+
+    def __repr__(self):
+        return f"<Tagging(id={self.id}, tag_id={self.tag_id}, video_id='{self.video_id}', source='{self.source}')>"
+
+
 # Database engine and session factory
 engine = create_engine(config.database_url, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
