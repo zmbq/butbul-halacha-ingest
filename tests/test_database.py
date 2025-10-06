@@ -5,7 +5,7 @@ Test database connectivity and operations.
 import pytest
 import psycopg2
 from src.config import config
-from src.database import init_db, get_db, Video
+from src.database import get_db, Video
 
 
 def test_db_connection():
@@ -30,10 +30,10 @@ def test_db_connection():
 
 
 def test_database_table_creation():
-    """Test that database tables can be created."""
+    """Test that we can connect to the database (tables should be managed by migrations)."""
     try:
-        init_db()
-        # If we get here without exception, table creation worked
+        db = get_db()
+        db.close()
         assert True
     except psycopg2.OperationalError as e:
         pytest.skip(f"Database not accessible: {e}")

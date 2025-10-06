@@ -11,6 +11,7 @@ from .pipeline.s01_ingest_videos import ingest_videos
 from .pipeline.s02_extract_metadata import extract_all_metadata
 from .pipeline.s03_transcribe_with_whisper import transcribe_videos
 from .pipeline.s04_populate_transcription_segments import populate_segments, clear_segments_table
+from .pipeline.s05_create_transcription_chunks import populate_chunks
 
 
 def main():
@@ -36,6 +37,12 @@ def main():
     p4.add_argument('--dry-run', action='store_true', help='Dry run (no DB writes)')
     p4.add_argument('--clear', action='store_true', help='Clear transcription_segments table before importing')
 
+    # s05
+    p5 = subparsers.add_parser('s05', help='Create transcription chunks')
+    p5.add_argument('--limit', type=int, default=None, help='Limit number of transcripts to process')
+    p5.add_argument('--dry-run', action='store_true', help='Dry run (no DB writes)')
+    p5.add_argument('--clear', action='store_true', help='Clear transcription_chunks table before inserting')
+
     # all
     pall = subparsers.add_parser('all', help='Run s01..s04 in sequence')
     pall.add_argument('--limit', type=int, default=None, help='Limit number of transcripts for s04')
@@ -53,6 +60,12 @@ def main():
         if args.clear and not args.dry_run:
             clear_segments_table()
         populate_segments(limit=args.limit, dry_run=args.dry_run, clear_flag=args.clear)
+    elif args.cmd == 's05':
+        # s05: create transcription chunks
+        if args.clear and not args.dry_run:
+            # clearing chunks is handled in the s05 implementation
+            pass
+        populate_chunks(limit=args.limit, dry_run=args.dry_run, clear_flag=getattr(args, 'clear', False))
     elif args.cmd == 'all':
         ingest_videos()
         extract_all_metadata()

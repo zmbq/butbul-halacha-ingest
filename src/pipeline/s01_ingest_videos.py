@@ -13,7 +13,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import OperationalError
-from ..database import init_db, get_db, Video
+from ..database import get_db, Video
 from ..youtube_service import YouTubeService
 from ..config import config
 
@@ -167,7 +167,7 @@ def ingest_videos(playlist_filter: str = "הלכה יומית"):
     
     try:
         print("\nConnecting to database...")
-        init_db()
+        db = get_db()
         database_available = True
         print("✓ Database connection successful!")
     except OperationalError as e:

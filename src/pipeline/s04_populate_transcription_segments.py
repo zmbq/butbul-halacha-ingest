@@ -19,7 +19,7 @@ import sys
 from sqlalchemy import select, and_, text
 from sqlalchemy.dialects.postgresql import insert
 import sqlalchemy as sa
-from ..database import get_db, init_db, TranscriptionSegment, Transcript, engine
+from ..database import get_db, TranscriptionSegment, Transcript, engine
 from ..config import config
 
 
@@ -28,7 +28,7 @@ def populate_segments(limit: int | None = None, dry_run: bool = False, clear_fla
     print("Populate transcription_segments - Step 4")
     print("=" * 80)
 
-    init_db()
+        # NOTE: do not create or modify tables here. Migrations (Alembic) manage schema.
     db = get_db()
 
     try:

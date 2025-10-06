@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import OperationalError
-from ..database import init_db, get_db, Video, Transcript
+from ..database import get_db, Video, Transcript
 from ..transcript_service import TranscriptService
 from ..config import config
 
@@ -174,7 +174,7 @@ def transcribe_videos(max_videos: int = 10, delay_seconds: float = 1.0, parallel
     # Initialize database
     try:
         print("Connecting to database...")
-        init_db()
+            # NOTE: do not create or modify tables here. Migrations (Alembic) manage schema.
         db = get_db()
         print("✓ Database connection successful!\n")
     except OperationalError as e:

@@ -143,39 +143,52 @@ class TranscriptionSegment(Base):
         return f"<TranscriptionSegment(id={self.id}, video_id='{self.video_id}', index={self.segment_index}, start={self.start})>"
 
 
+class TranscriptionChunk(Base):
+    """Model for storing contiguous chunks of transcription segments used for embeddings.
+
+    Each chunk covers a contiguous range of segments (first_segment_id .. last_segment_id)
+    and represents approximately 20-30 seconds of audio. Chunks may overlap by one
+    segment with the previous chunk to provide context.
+    """
+
+    __tablename__ = "transcription_chunks"
+
+    # Auto-incrementing primary key
+    id = Column(Integer, primary_key=True, comment="Chunk primary key")
+
+    # Reference to the video this chunk belongs to
+    video_id = Column(String(20), ForeignKey('videos.video_id', ondelete='CASCADE'), nullable=False, index=True, comment="YouTube video ID (FK to videos)")
+
+    # Transcript source (whisper, youtube, etc.)
+    source = Column(String(20), nullable=False, default='whisper', comment="Transcript source: whisper, youtube, etc.")
+
+    # First and last segment IDs (inclusive) that make up this chunk
+    first_segment_id = Column(Integer, ForeignKey('transcription_segments.id', ondelete='CASCADE'), nullable=False, comment="First segment id in this chunk (inclusive)")
+    last_segment_id = Column(Integer, ForeignKey('transcription_segments.id', ondelete='CASCADE'), nullable=False, comment="Last segment id in this chunk (inclusive)")
+
+    # Optional human-readable boundaries (start/end seconds) cached for quick queries
+    start = Column(Float, nullable=True, comment="Chunk start time in seconds (from first segment)")
+    end = Column(Float, nullable=True, comment="Chunk end time in seconds (from last segment)")
+    # Aggregated text for this chunk (concatenation of segment texts)
+    text = Column(Text, nullable=False, default='', comment="Aggregated text for chunk (concatenated segment texts)")
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), comment="Record creation timestamp")
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="Record last update timestamp")
+
+    __table_args__ = (
+        UniqueConstraint('video_id', 'first_segment_id', 'last_segment_id', name='uq_transcription_chunks_video_first_last'),
+        Index('ix_transcription_chunks_video_start_end', 'video_id', 'start', 'end'),
+    )
+
+    def __repr__(self):
+        return f"<TranscriptionChunk(id={self.id}, video_id='{self.video_id}', first={self.first_segment_id}, last={self.last_segment_id})>"
+
+
 # Database engine and session factory
 engine = create_engine(config.database_url, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-def init_db():
-    """
-    Initialize the database by creating all tables.
-    
-    NOTE: This is for initial setup only. For schema changes after initial
-    deployment, use Alembic migrations instead. See MIGRATIONS.md for details.
-    
-    To create migrations after modifying this file:
-        poetry run alembic revision --autogenerate -m "Description"
-        poetry run alembic upgrade head
-    """
-    Base.metadata.create_all(bind=engine)
-    print("Database tables created successfully.")
-
-
-def drop_all_tables():
-    """Drop all tables. WARNING: This will delete all data!"""
-    Base.metadata.drop_all(bind=engine)
-    print("All tables dropped successfully.")
-
-
-def recreate_db():
-    """Drop and recreate all tables. WARNING: This will delete all data!"""
-    print("Dropping all tables...")
-    drop_all_tables()
-    print("Creating all tables...")
-    init_db()
-    print("Database recreated successfully.")
 
 
 def get_db():
