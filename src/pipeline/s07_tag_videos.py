@@ -109,10 +109,39 @@ def run() -> None:
 
         # Process year tags (separated for incremental development and testing)
         process_year_tags(db)
+        # Process parsha (Shabbat/Friday) tags: manual tag 'פרשת השבוע'
+        process_parsha_tags(db)
 
         db.commit()
     finally:
         db.close()
+
+
+def process_parsha_tags(db) -> None:
+    """Create/ensure manual tag 'פרשת השבוע' and tag videos where day_of_week == 'שישי'."""
+    # Ensure the manual tag exists (cache it in memory)
+    tag_name = 'פרשת השבוע'
+    existing = db.execute(select(Tag).where(Tag.name == tag_name)).scalars().first()
+    if existing:
+        tag_id = cast(int, existing.id)
+    else:
+        tag = Tag(name=tag_name, description='Manual parsha tag', type='manual')
+        db.add(tag)
+        db.flush()
+        tag_id = cast(int, tag.id)
+
+    # Use DB-side ILIKE filter to find subjects containing 'פרשת' (case-insensitive)
+    keyword = '%פרשת%'
+    rows = db.execute(select(VideoMetadata.video_id).where(VideoMetadata.subject.ilike(keyword))).all()
+    total = len(rows)
+    created = 0
+    for i, (video_id,) in enumerate(rows, start=1):
+        db.add(Tagging(tag_id=tag_id, video_id=video_id, source='manual-parsha'))
+        created += 1
+        if i % max(1, total // 10) == 0:
+            print(f's07-parsha: tagged {i}/{total} videos matching "פרשת" so far')
+
+    print(f's07-parsha: finished tagging parsha videos. total_tagged={created}')
 
 
 if __name__ == '__main__':
