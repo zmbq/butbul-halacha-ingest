@@ -14,8 +14,38 @@ import re
 from datetime import datetime, timezone
 import sqlalchemy as sa
 from sqlalchemy import select
-from typing import cast
+from dataclasses import dataclass, field
+from typing import cast, List
 from src.database import SessionLocal, Tag, Tagging, VideoMetadata
+
+# Manual tags configuration as typed dataclasses: name and list of search terms (OR)
+
+
+@dataclass(frozen=True)
+class ManualTag:
+    name: str
+    terms: List[str] = field(default_factory=list)
+    exclude: List[str] = field(default_factory=list)
+
+
+MANUAL_TAGS: List[ManualTag] = [
+    ManualTag(name="פרשת השבוע", terms=["פרשת"]),
+    ManualTag(name="שבת", terms=["שבת"]),
+    ManualTag(name="ראש חודש", terms=["ראש חודש"]),
+    # Separate holiday tags for מועדי ישראל
+    ManualTag(name="ראש השנה", terms=["ראש השנה"]),
+    ManualTag(name="יום כיפור", terms=["כיפור"]),
+    ManualTag(name="סוכות", terms=["סוכות", "סוכה"]),
+    ManualTag(name="פסח", terms=["פסח", "חמץ", "מצה"]),
+    ManualTag(name="שבועות", terms=["שבועות"]),
+    # Additional holidays
+    ManualTag(name="חנוכה", terms=["חנוכה", "חנוכיה"]),
+    # פורים: ensure we don't match כיפור; add exclude list to avoid false positives
+    ManualTag(name="פורים", terms=["פורים"], exclude=["כיפור"]),
+    ManualTag(name="כשרות", terms=["חלבי", "בשרי", "פרווה"]),
+    ManualTag(name="תענית", terms=["תענית", "צום"]),
+    ManualTag(name="ברכות", terms=["ברכות", "ברכה", "ברכת"])
+]
 
 # Regex to capture Hebrew year tokens at end of string like: '... התשפ"ו' or '... התשפא' etc.
 # We look for the word התשפ plus up to 2 Hebrew letters or punctuation at the end.
@@ -109,39 +139,58 @@ def run() -> None:
 
         # Process year tags (separated for incremental development and testing)
         process_year_tags(db)
-        # Process parsha (Shabbat/Friday) tags: manual tag 'פרשת השבוע'
-        process_parsha_tags(db)
+
+        # Process manual tags (parsha, שבת, ראש חודש, מועדי ישראל, ...)
+        process_manual_tags(db)
 
         db.commit()
     finally:
         db.close()
 
 
-def process_parsha_tags(db) -> None:
-    """Create/ensure manual tag 'פרשת השבוע' and tag videos where day_of_week == 'שישי'."""
-    # Ensure the manual tag exists (cache it in memory)
-    tag_name = 'פרשת השבוע'
-    existing = db.execute(select(Tag).where(Tag.name == tag_name)).scalars().first()
-    if existing:
-        tag_id = cast(int, existing.id)
-    else:
-        tag = Tag(name=tag_name, description='Manual parsha tag', type='manual')
-        db.add(tag)
-        db.flush()
-        tag_id = cast(int, tag.id)
+def process_manual_tags(db) -> None:
+    """Process all manual tags defined in MANUAL_TAGS.
 
-    # Use DB-side ILIKE filter to find subjects containing 'פרשת' (case-insensitive)
-    keyword = '%פרשת%'
-    rows = db.execute(select(VideoMetadata.video_id).where(VideoMetadata.subject.ilike(keyword))).all()
-    total = len(rows)
-    created = 0
-    for i, (video_id,) in enumerate(rows, start=1):
-        db.add(Tagging(tag_id=tag_id, video_id=video_id, source='manual-parsha'))
-        created += 1
-        if i % max(1, total // 10) == 0:
-            print(f's07-parsha: tagged {i}/{total} videos matching "פרשת" so far')
+    For each entry in MANUAL_TAGS (name + list of terms), ensure the Tag exists
+    and create Tagging rows for videos whose subject matches any of the terms
+    (DB-side ILIKE across ORed terms).
+    """
+    for entry in MANUAL_TAGS:
+        name = entry.name
+        terms = entry.terms or []
+        if not terms:
+            continue
 
-    print(f's07-parsha: finished tagging parsha videos. total_tagged={created}')
+        # ensure tag exists
+        existing = db.execute(select(Tag).where(Tag.name == name)).scalars().first()
+        if existing:
+            tag_id = cast(int, existing.id)
+        else:
+            tag = Tag(name=name, description=f'Manual tag {name}', type='manual')
+            db.add(tag)
+            db.flush()
+            tag_id = cast(int, tag.id)
+
+        # build ORed ILIKE expressions for the search terms
+        ilike_clauses = [VideoMetadata.subject.ilike(f'%{t}%') for t in terms]
+        where_clause = sa.or_(*ilike_clauses)
+
+        # handle optional excludes
+        excludes = entry.exclude or []
+        if excludes:
+            not_clauses = [~VideoMetadata.subject.ilike(f'%{e}%') for e in excludes]
+            where_clause = sa.and_(where_clause, sa.and_(*not_clauses))
+
+        rows = db.execute(select(VideoMetadata.video_id).where(where_clause)).all()
+        total = len(rows)
+        created = 0
+        for i, (video_id,) in enumerate(rows, start=1):
+            db.add(Tagging(tag_id=tag_id, video_id=video_id, source=f'manual-{name}'))
+            created += 1
+            if i % max(1, total // 10) == 0:
+                print(f's07-manual: tag="{name}" tagged {i}/{total} videos so far')
+
+        print(f's07-manual: finished tagging for "{name}". total_tagged={created}')
 
 
 if __name__ == '__main__':
